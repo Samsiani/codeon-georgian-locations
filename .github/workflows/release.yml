@@ -1,4 +1,4 @@
-name: Release CodeOn Core
+name: Release CodeOn Georgian Locations
 
 # Triggers on any pushed tag matching v*. Builds an installable ZIP
 # and attaches it to the GitHub Release. workflow_dispatch from a
@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           STAGE="codeon-core"
-          OUT="codeon-core-${TAG}.zip"
+          OUT="codeon-georgian-locations-${TAG}.zip"
           mkdir -p build
           rm -rf "build/${STAGE}"
           mkdir -p "build/${STAGE}"
@@ -98,7 +98,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: codeon-core-*.zip
+          files: codeon-georgian-locations-*.zip
           body_path: release-notes.md
           draft: false
 

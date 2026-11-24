@@ -42,7 +42,7 @@ final class Repository
         $bundlePath = CODEON_CORE_PATH . 'data/locations.php';
         if (!is_readable($bundlePath)) {
             throw new \RuntimeException(
-                sprintf('CodeOn Core: data bundle missing at %s. Run build/sync-from-georgian-data.php.', $bundlePath)
+                sprintf('CodeOn Georgian Locations: data bundle missing at %s. Run build/sync-from-georgian-data.php.', $bundlePath)
             );
         }
         /** @var array{_meta: array<string,mixed>, regions: array<int, array<string,mixed>>} $data */

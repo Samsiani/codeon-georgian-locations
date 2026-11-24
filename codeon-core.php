@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name:       CodeOn Core
+ * Plugin Name:       CodeOn Georgian Locations
  * Plugin URI:        https://wordpress.org/plugins/codeon-core/
- * Description:       Georgian Locations for WooCommerce — replaces the free-text City field with a real cascading Region → Municipality → Settlement picker (4,394 settlements bundled). Also the canonical hub for the CodeOn plugin family.
- * Version:           0.3.19
+ * Description:       Georgian addresses at WooCommerce checkout — a Region → Municipality → Settlement picker with all 4,394 settlements of Georgia, in place of the free-text City field. Free. Also adds the CodeOn menu that the CodeOn plugins share.
+ * Version:           0.4.0
  * Requires at least: 6.2
  * Requires PHP:      8.1
  * Requires Plugins:  woocommerce
@@ -31,7 +31,7 @@ if (defined('CODEON_CORE_VERSION')) {
     return;
 }
 
-define('CODEON_CORE_VERSION', '0.3.19');
+define('CODEON_CORE_VERSION', '0.4.0');
 define('CODEON_CORE_FILE', __FILE__);
 define('CODEON_CORE_PATH', plugin_dir_path(__FILE__));
 define('CODEON_CORE_URL', plugin_dir_url(__FILE__));
@@ -71,12 +71,12 @@ register_activation_hook(__FILE__, [\CodeOn\Core\Activator::class, 'activate']);
 
 // Self-hosted updates from GitHub Releases (re-introduced in v0.2.7
 // after dropping WordPress.org distribution). Polls
-// github.com/Samsiani/codeon-core for new tags every ~12h, surfaces
-// matching `codeon-core-vX.Y.Z.zip` release assets to WordPress's
+// github.com/Samsiani/codeon-georgian-locations for new tags every ~12h, surfaces
+// matching `codeon-georgian-locations-vX.Y.Z.zip` release assets to WordPress's
 // native Plugins → Updates UI. The release ZIP is built by this
 // repo's release.yml on every `v*` tag push.
 //
-// codeon-core is a public repo, so PUC hits the GitHub API
+// The repo is public, so PUC hits the GitHub API
 // unauthenticated — no PAT required in plugin code. Rate limit is
 // per-IP (60 req/h unauthenticated), and PUC caches each poll for
 // 12h, so even on a host that runs many WP sites the budget is fine.
@@ -85,13 +85,13 @@ if (is_file(CODEON_CORE_PATH . 'vendor/yahnis-elsts/plugin-update-checker/plugin
 
     if (class_exists(\YahnisElsts\PluginUpdateChecker\v5\PucFactory::class)) {
         $codeonCoreUpdateChecker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
-            'https://github.com/Samsiani/codeon-core/',
+            'https://github.com/Samsiani/codeon-georgian-locations/',
             __FILE__,
             'codeon-core'
         );
         // Pull from the `main` branch's tags. Combined with
         // enableReleaseAssets() below, PUC prefers the uploaded
-        // codeon-core-vX.Y.Z.zip asset over a tarball of the source
+        // codeon-georgian-locations-vX.Y.Z.zip asset over a tarball of the source
         // tree — important because the release ZIP is the only thing
         // that ships vendor/ inside the package.
         $codeonCoreUpdateChecker->setBranch('main');
@@ -158,7 +158,7 @@ add_action('admin_notices', static function (): void {
     echo '<div class="notice notice-warning"><p>';
     echo esc_html(sprintf(
         /* translators: %s: WooCommerce */
-        __('CodeOn Core needs %s to be active for the Georgian Locations feature. The CodeOn hub menu still works without it.', 'codeon-core'),
+        __('CodeOn Georgian Locations needs %s to be active for the address picker. The CodeOn menu still works without it.', 'codeon-core'),
         'WooCommerce'
     ));
     echo '</p></div>';

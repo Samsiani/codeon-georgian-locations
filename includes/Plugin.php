@@ -1,6 +1,6 @@
 <?php
 /**
- * CodeOn Core — singleton bootstrap.
+ * CodeOn Georgian Locations (formerly CodeOn Core) — singleton bootstrap.
  *
  * Three responsibilities, in order:
  *
@@ -95,7 +95,7 @@ final class Plugin
 
         $repo = new FlatOptionRepository('codeon_core_settings');
 
-        $manifest = (new Manifest('codeon-core', __('CodeOn Core', 'codeon-core')))
+        $manifest = (new Manifest('codeon-core', __('CodeOn Georgian Locations', 'codeon-core')))
             ->version(CODEON_CORE_VERSION)
             ->capability('manage_woocommerce')
             ->dashicon('dashicons-location-alt')

@@ -91,10 +91,10 @@ final class DashboardRenderer
                     <?php esc_html_e('CodeOn is a plugin family for Georgian WooCommerce stores. Every plugin shares this admin hub, the same License & Updates flow, and the same design language — install one, the next feels familiar.', 'codeon-core'); ?>
                 </p>
                 <p>
-                    <?php esc_html_e('CodeOn Core (this plugin, free) ships the Georgian address hierarchy as a cascading WooCommerce checkout picker — 13 regions, 77 municipalities, 4,394 settlements, validated server-side. It is also the canonical home for the rest of the family.', 'codeon-core'); ?>
+                    <?php esc_html_e('CodeOn Georgian Locations (this plugin, free) adds Georgian addresses to WooCommerce checkout: customers pick their region, municipality and settlement from all 13 regions, 77 municipalities and 4,394 settlements, checked on the server. It also holds this CodeOn menu for the rest of the family.', 'codeon-core'); ?>
                 </p>
                 <p>
-                    <?php esc_html_e('The premium plugins sold at codeon.ge plug in beneath Core: every major Georgian payment method (TBC, BOG, Flitt, Credo) with their card and installment variants, the Fina ↔ WooCommerce accounting sync, and QuickShipper courier delivery.', 'codeon-core'); ?>
+                    <?php esc_html_e('The premium plugins sold at codeon.ge sit in this same menu: every major Georgian payment method (TBC, BOG, Flitt, Credo) with their card and installment variants, the Fina ↔ WooCommerce accounting sync, and QuickShipper courier delivery.', 'codeon-core'); ?>
                 </p>
                 <p class="codeon-welcome-actions">
                     <a class="codeon-welcome-link" href="https://codeon.ge" target="_blank" rel="noopener">
@@ -495,10 +495,10 @@ final class DashboardRenderer
         // codeon-core itself (this plugin) — always first, always installed.
         $rows[] = [
             'slug'      => 'codeon-core',
-            'name'      => __('CodeOn Core', 'codeon-core'),
-            'tagline'   => __('Georgian address hierarchy as a cascading WooCommerce checkout picker — 13 regions, 77 municipalities, 4,394 settlements. Also the canonical hub for the rest of the family.', 'codeon-core'),
+            'name'      => __('CodeOn Georgian Locations', 'codeon-core'),
+            'tagline'   => __('Georgian addresses at WooCommerce checkout: region, municipality and settlement from all 4,394 settlements of Georgia. Also holds the CodeOn menu for the rest of the family.', 'codeon-core'),
             'category'  => __('Free · Locations', 'codeon-core'),
-            'url'       => 'https://codeon.ge',
+            'url'       => 'https://codeon.ge/plugins/shipping/georgian-locations',
             'admin_url' => admin_url('admin.php?page=codeon-core'),
             'installed' => true,
             'version'   => defined('CODEON_CORE_VERSION') ? (string) CODEON_CORE_VERSION : '',

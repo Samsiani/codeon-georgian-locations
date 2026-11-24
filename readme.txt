@@ -1,21 +1,21 @@
-=== CodeOn Core ===
+=== CodeOn Georgian Locations ===
 Contributors: samsiani
 Tags: woocommerce, georgia, address, checkout, location
 Requires at least: 6.2
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: woocommerce
-Stable tag: 0.3.19
+Stable tag: 0.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Georgian Locations for WooCommerce — cascading Region → Municipality → Settlement address picker. 4,394 settlements bundled.
+Georgian addresses at WooCommerce checkout — a Region → Municipality → Settlement picker with all 4,394 settlements of Georgia. Free.
 
 == Description ==
 
 WooCommerce out of the box has no idea what a Georgian city is. Customers type their settlement name freehand, with five different spellings, in three languages. Reports are useless. Couriers reject orders.
 
-**CodeOn Core** ships the entire administrative hierarchy of Georgia — 13 regions, 77 municipalities, 4,394 settlements (cities, towns, villages) — as a structured, cascading checkout dropdown.
+**CodeOn Georgian Locations** (formerly CodeOn Core) ships the entire administrative hierarchy of Georgia — 13 regions, 77 municipalities, 4,394 settlements (cities, towns, villages) — as a structured, cascading checkout dropdown.
 
 Customers select **Region → Municipality → Settlement**. Validated server-side. Stored as structured order meta. Filterable in the admin orders list. Compatible with classic checkout (block checkout in v0.2.0).
 
@@ -38,11 +38,11 @@ Customers select **Region → Municipality → Settlement**. Validated server-si
 
 = About CodeOn =
 
-CodeOn Core also acts as the canonical home for the CodeOn family of premium WooCommerce plugins (TBC Card, BOG Card, Flitt, and others). When a CodeOn premium plugin is installed alongside Core, both share a single tidy admin menu instead of cluttering the sidebar. Premium plugins are sold separately at codeon.ge — they are **not** required for the locations feature.
+CodeOn Georgian Locations also holds the CodeOn admin menu for the CodeOn family of WooCommerce plugins (TBC Card, BOG Card, Flitt, and others). When another CodeOn plugin is installed alongside it, both share that one menu instead of cluttering the sidebar. Premium plugins are sold separately at codeon.ge — they are **not** required for the locations feature.
 
 == Installation ==
 
-1. Install via Plugins → Add New → search for "CodeOn Core" → Install → Activate.
+1. Download the ZIP from https://codeon.ge/plugins/shipping/georgian-locations, then Plugins → Add New → Upload Plugin → Install Now → Activate.
 2. WooCommerce → CodeOn → Locations to configure display mode and toggle occupied territories.
 3. That's it. The checkout cascade activates automatically when a customer selects Georgia as their country.
 
@@ -71,6 +71,10 @@ Yes — Abkhazia and the Tskhinvali region are in the dataset but **hidden by de
 3. CodeOn hub menu with installed plugins listed underneath.
 
 == Changelog ==
+
+= 0.4.0 — 2026-11-24 =
+* Renamed from CodeOn Core to CodeOn Georgian Locations, a name that says what the plugin does. Nothing else changes: the same plugin folder, settings and order data, and updates keep arriving in Dashboard → Updates.
+* The plugin page is now https://codeon.ge/plugins/shipping/georgian-locations, next to the other free CodeOn plugins.
 
 = 0.3.19 — 2026-05-21 =
 * No-op bump so sites already on v0.3.18 see a fresh update line. The v0.3.18 icon-injection fix now propagates on the next force-check.

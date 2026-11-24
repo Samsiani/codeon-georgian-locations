@@ -1,6 +1,6 @@
 <?php
 /**
- * Fires when CodeOn Core is fully uninstalled (not just deactivated).
+ * Fires when CodeOn Georgian Locations is fully uninstalled (not just deactivated).
  * Removes Core's own options. Order meta (_billing_geo_*, _shipping_geo_*)
  * is intentionally preserved — past orders should remain accurate even
  * after the plugin is gone.

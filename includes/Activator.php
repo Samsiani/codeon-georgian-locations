@@ -1,6 +1,6 @@
 <?php
 /**
- * CodeOn Core activation.
+ * CodeOn Georgian Locations activation.
  *
  * Memory rule (`feedback_plugin_activator_opcache_flush.md`): the very
  * first thing every CodeOn Activator must do is opcache_invalidate its
@@ -53,7 +53,7 @@ final class Activator
             wp_die(
                 esc_html(sprintf(
                     /* translators: %1$s required PHP version, %2$s current version */
-                    __('CodeOn Core requires PHP %1$s or newer. This server is running %2$s.', 'codeon-core'),
+                    __('CodeOn Georgian Locations requires PHP %1$s or newer. This server is running %2$s.', 'codeon-core'),
                     CODEON_CORE_MIN_PHP,
                     PHP_VERSION
                 )),

@@ -1,6 +1,7 @@
 <?php
 /**
- * Hub claim: makes CodeOn Core the canonical owner of toplevel_page_codeon.
+ * Hub claim: makes CodeOn Georgian Locations (formerly CodeOn Core) the
+ * canonical owner of toplevel_page_codeon.
  *
  * Implements the four override points spelled out in the framework's
  * docs/HUB_ARCHITECTURE.md §6:

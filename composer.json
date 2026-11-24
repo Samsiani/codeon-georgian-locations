@@ -1,6 +1,6 @@
 {
     "name": "codeon/codeon-core",
-    "description": "Free CodeOn Core plugin for WordPress.org — Georgian Locations cascade for WooCommerce + canonical hub owner for the CodeOn plugin family.",
+    "description": "CodeOn Georgian Locations (free) — Georgian Region → Municipality → Settlement picker for WooCommerce checkout + owner of the CodeOn admin menu for the CodeOn plugin family.",
     "type": "wordpress-plugin",
     "license": "GPL-2.0-or-later",
     "homepage": "https://wordpress.org/plugins/codeon-core/",
