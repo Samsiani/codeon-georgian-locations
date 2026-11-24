@@ -5,7 +5,7 @@ Requires at least: 6.2
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: woocommerce
-Stable tag: 0.4.0
+Stable tag: 0.4.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -71,6 +71,9 @@ Yes — Abkhazia and the Tskhinvali region are in the dataset but **hidden by de
 3. CodeOn hub menu with installed plugins listed underneath.
 
 == Changelog ==
+
+= 0.4.1 — 2026-11-24 =
+* CodeOn → Extensions: free CodeOn plugins have their own "Free plugins" section. "Install free" installs one in a click, no license key needed.
 
 = 0.4.0 — 2026-11-24 =
 * Renamed from CodeOn Core to CodeOn Georgian Locations, a name that says what the plugin does. Nothing else changes: the same plugin folder, settings and order data, and updates keep arriving in Dashboard → Updates.

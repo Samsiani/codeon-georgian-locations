@@ -71,8 +71,16 @@ final class LicenseClient
             $payload['build_id'] = $buildId;
         }
 
+        // 5 s timeout (was 20 s). codeon.ge's validate-license endpoint
+        // replies in <500 ms on healthy paths; 20 s was catastrophic when
+        // an admin loaded a dashboard with 10 stale CodeOn plugins —
+        // each plugin's LicenseGate fired its own synchronous POST, and
+        // the worst case stacked to ~200 s of blocked admin paint. The
+        // per-plugin LicenseGate is also being moved off the admin_init
+        // path (framework v0.3.19), but bounding this timeout caps the
+        // damage even when called from cron paths or directly.
         $response = wp_remote_post(self::ENDPOINT, [
-            'timeout' => 20,
+            'timeout' => 5,
             'headers' => [
                 'Content-Type' => 'application/json',
                 'Accept'       => 'application/json',

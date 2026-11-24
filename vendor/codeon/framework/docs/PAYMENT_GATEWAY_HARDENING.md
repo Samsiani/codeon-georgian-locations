@@ -155,40 +155,27 @@ public static function canonicalEventId(string $bankOrderId, string $status): st
 
 ### 2.2 Per-order critical section
 
-Even with a canonical event id, the *application* of a transition isn't atomic — `OrderStatusMapper::apply()` does multiple WC writes (status, notes, payment_complete) and isn't a database transaction. Wrap it in a per-order lock:
+Even with a canonical event id, the *application* of a transition isn't atomic — `OrderStatusMapper::apply()` does multiple WC writes (status, notes, payment_complete) and isn't a database transaction. Wrap it in the framework's per-order lock, **and do everything that decides the transition inside it**:
 
 ```php
-public static function withOrderLock(int $orderId, callable $fn, int $ttlSeconds = 30): mixed
-{
-    $key = 'codeon_<slug>_lock_' . $orderId;
-    $group = 'codeon-<slug>';
-
-    if (wp_using_ext_object_cache()) {
-        if (!wp_cache_add($key, 1, $group, $ttlSeconds)) {
-            return null; // someone else is mid-apply
-        }
-        try { return $fn(); } finally { wp_cache_delete($key, $group); }
-    }
-
-    // Transient fallback for sites without an object cache.
-    $optionKey = '_' . $key;
-    $now = time();
-    if ((int) get_option($optionKey, 0) > $now) return null;
-    if (!add_option($optionKey, $now + $ttlSeconds, '', 'no')) {
-        update_option($optionKey, $now + $ttlSeconds, false);
-    }
-    try { return $fn(); } finally { delete_option($optionKey); }
-}
+$applied = OrderLock::run('<slug>', $orderId, static function () use ($orderId, ...): bool {
+    $order = wc_get_order($orderId);            // re-read: the object you loaded before the bank call is stale
+    if (/* not ours any more, or not the current attempt */) { return false; }
+    if (!WebhookEvents::record(...)) { return false; }   // record INSIDE the lock
+    OrderStatusMapper::apply($order, $result, $bankId, $note);
+    WebhookEvents::markProcessed(...);
+    return true;
+});
+if ($applied === null) { /* lock busy: webhook → 503 so the bank retries; cron → next tick */ }
 ```
 
-Why both paths:
+Rules (since framework 0.3.20):
 
-- **`wp_cache_add`** is genuinely atomic on Redis/Memcached. Use when `wp_using_ext_object_cache()` is true.
-- **Transient fallback** for shared-hosting installs without a persistent object cache. `add_option` returns false if the key already exists, so it's a usable single-flight primitive even though it's slower.
-
-Both webhook and cron paths pass `OrderStatusMapper::apply()` through this lock. Lock losers return `null`; the caller logs and moves on (the winner already applied or will).
-
-**Reference impl:** `BogWebhookHandler::withOrderLock()` (v0.2.0+).
+- **`OrderLock::run()` is a real mutex** — `wp_cache_add` with a persistent object cache, MySQL `GET_LOCK` otherwise. The old `add_option()`/`update_option()` fallback shown here before 0.3.20 was *not* exclusive: `add_option()` upserts after a `get_option()` miss, and a failed add fell through to `update_option()` and carried on.
+- **Record the event inside the lock.** Recording first and then losing the lock left the row "seen" but never applied. `WebhookEvents::record()` now re-offers rows left unprocessed for 5 minutes, but don't rely on that as the normal path.
+- **Re-read the order inside the lock.** Payment paths load the order, then spend seconds on HTTP. Acting on that stale object is how late "failed/expired" events overwrote orders that were paid meanwhile.
+- **Negative results never downgrade a paid order.** `OrderStatusMapper::apply()` refuses FAILURE/CANCEL when the DB shows a paid status, a paid date is set, or another payment method owns the order — it leaves a note instead. Still check in your handler that the event belongs to the order's *current* attempt; history ids may only ever promote a success.
+- **Protect your gateway's paid orders from other plugins:** call `PaidOrderGuard::protect([Gateway::ID, …], '<plugin-slug>')` at boot. It vetoes any automated (non-manual) change of such an order to failed/cancelled before it is saved — the intelekti #22366 case, where a third-party Flitt plugin failed a BOG-paid order 10 hours after the customer abandoned a Flitt attempt.
 
 ---
 

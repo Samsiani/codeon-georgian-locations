@@ -33,6 +33,13 @@ final class Manifest
     public bool $useHub = false;
 
     /**
+     * Show the shared Extensions catalog (and register its install
+     * handlers) for this plugin. Defaults to true. A plugin that turns
+     * it off still joins the hub menu.
+     */
+    public bool $hubCatalog = true;
+
+    /**
      * Hub group identifier — defaults to 'codeon'. Lets future
      * groups (e.g. a separate 'codeon-storefront' suite) coexist
      * under different top-level menus without code changes.
@@ -119,6 +126,15 @@ final class Manifest
     public function hub(bool $enabled = true): self
     {
         $this->useHub = $enabled;
+        return $this;
+    }
+
+    /**
+     * Turn the shared Extensions catalog on or off for this plugin.
+     */
+    public function hubCatalog(bool $enabled): self
+    {
+        $this->hubCatalog = $enabled;
         return $this;
     }
 

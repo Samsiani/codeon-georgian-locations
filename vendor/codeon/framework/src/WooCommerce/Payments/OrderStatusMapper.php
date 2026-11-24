@@ -174,26 +174,64 @@ final class OrderStatusMapper
         return self::RESULT_PENDING;
     }
 
-    public static function apply(\WC_Order $order, string $result, string $transactionId, string $note): void
+    /**
+     * Negative results (FAILURE / CANCEL) are never applied to an order
+     * that is paid, or that another payment method owns by now — checked
+     * against the database, because callers often hold an order object
+     * loaded before a slow bank call. A late "failed/expired" for an
+     * abandoned attempt then only leaves a note instead of failing a paid
+     * order, restocking it and emailing the customer (since 0.3.20).
+     *
+     * @param string|null $gatewayId The caller's gateway id. When given, "another
+     *                               payment method owns the order" is judged against
+     *                               it — reliable even for a freshly loaded order.
+     */
+    public static function apply(\WC_Order $order, string $result, string $transactionId, string $note, ?string $gatewayId = null): void
     {
         switch ($result) {
             case self::RESULT_SUCCESS:
-                $order->payment_complete($transactionId);
+                // Already paid in the DB (e.g. webhook and reconcile both
+                // saw the payment): don't replay the paid transition from a
+                // stale object — that re-sends the new-order emails.
+                $persisted = PaidOrders::persisted((int) $order->get_id());
+                if ($persisted['status'] === null || !in_array($persisted['status'], wc_get_is_paid_statuses(), true)) {
+                    $order->payment_complete($transactionId);
+                    $order->add_order_note($note);
+                    return;
+                }
+                if ($gatewayId !== null && $persisted['payment_method'] !== null && $persisted['payment_method'] !== $gatewayId) {
+                    $order->add_order_note(sprintf(
+                        /* translators: 1: the bank's note, 2: transaction id, 3: payment method the order is paid with */
+                        __('%1$s — this order is ALREADY PAID with "%3$s", yet this payment (%2$s) also went through. The customer may have been charged twice; check and refund one.', 'codeon-framework'),
+                        $note,
+                        $transactionId,
+                        $persisted['payment_method']
+                    ));
+                    return;
+                }
                 $order->add_order_note($note);
                 return;
 
             case self::RESULT_FAILURE:
-                if ($order->has_status(['failed', 'cancelled', 'refunded'])) {
-                    return;
-                }
-                $order->update_status('failed', $note);
-                return;
-
             case self::RESULT_CANCEL:
-                if ($order->has_status(['cancelled', 'refunded'])) {
+                $skip = $result === self::RESULT_FAILURE ? ['failed', 'cancelled', 'refunded'] : ['cancelled', 'refunded'];
+                $persisted = PaidOrders::persisted((int) $order->get_id());
+                if ($order->has_status($skip) || in_array($persisted['status'], $skip, true)) {
                     return;
                 }
-                $order->update_status('cancelled', $note);
+                $blocker = PaidOrders::negativeTransitionBlocker($order, $persisted, $gatewayId);
+                if ($blocker !== null) {
+                    $order->add_order_note(sprintf(
+                        /* translators: 1: the bank's note, 2: reason the status was kept */
+                        __('%1$s — not applied: %2$s', 'codeon-framework'),
+                        $note,
+                        $blocker === 'paid'
+                            ? __('this order is already paid. If the payment really was reversed, change the status manually.', 'codeon-framework')
+                            : __('the order has since been switched to another payment method.', 'codeon-framework')
+                    ));
+                    return;
+                }
+                $order->update_status($result === self::RESULT_FAILURE ? 'failed' : 'cancelled', $note);
                 return;
 
             case self::RESULT_REFUND:

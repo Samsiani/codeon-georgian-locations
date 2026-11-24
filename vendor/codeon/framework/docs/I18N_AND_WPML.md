@@ -57,6 +57,11 @@ add_action('init', static function (): void {
 
 Why `init`, not `plugins_loaded`: WPML hooks into `plugins_loaded` itself, and translations registered before WPML's hooks fire don't always get the right locale. `init` runs after both, every time, on every request.
 
+**Never call `__()`, `_e()`, `_x()`, etc. before `init` either** (e.g. during `plugins_loaded` or `woocommerce_loaded`, which WooCommerce fires inside `plugins_loaded`). WordPress 6.7+ emits a `_load_textdomain_just_in_time` `_doing_it_wrong` notice for any translation lookup before `init`. In `Plugin::boot()`:
+- Compute `$isRecovery = !(new FrameworkBuildStamp())->verify();` on `woocommerce_loaded` so gateways and guards can register early.
+- Build `Manifest` (and call `Bootstrap::register()` and `LocalSandbox::adminNotice()`) inside the `init` callback, right after `load_plugin_textdomain()`.
+- Defer `wp_schedule_event()` calls to `init` too — scheduling cron events invokes `cron_schedules`, which runs plugins' translated schedule labels.
+
 ## 4. Block-Checkout (and any other) JS strings
 
 WC Blocks payment-method labels, descriptions, and inline strings rendered by client-side React MUST use `wp.i18n.__()` and translations have to be registered against the script handle:
@@ -154,6 +159,7 @@ Before tagging any plugin release:
 - [ ] Plugin header has `Text Domain:` and `Domain Path: /languages`.
 - [ ] Textdomain literal === plugin folder slug everywhere it appears.
 - [ ] `load_plugin_textdomain()` called once on `init` (NOT `plugins_loaded`).
+- [ ] No `__()` / `_e()` / `_x()` calls execute before `init` (`Manifest` + `Bootstrap::register()` and `LocalSandbox::adminNotice()` run on `init` after `load_plugin_textdomain()`, and no `wp_schedule_event()` runs during `plugins_loaded`).
 - [ ] Every user-facing string is wrapped (`__`, `_e`, `esc_html__`, `_x`, `_n`, …).
 - [ ] Every gettext call uses a string literal as the textdomain argument.
 - [ ] `sprintf` / `printf` have `/* translators: */` comments on the line above.

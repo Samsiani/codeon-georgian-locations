@@ -37,6 +37,12 @@ abstract class AbstractGateway extends \WC_Payment_Gateway
 {
     public const ENV_SANDBOX = 'sandbox';
     public const ENV_PRODUCTION = 'production';
+    /**
+     * codeon.ge stands in for the bank (see Payments\LocalSandbox): no
+     * merchant account, no money, no licence. Offered only by gateways
+     * whose supportsLocalSandbox() is true.
+     */
+    public const ENV_LOCAL_SANDBOX = 'local_sandbox';
 
     /** @var string Base URL for icon assets — typically plugins_url('assets/icons/', __FILE__). */
     protected string $iconBaseUrl = '';
@@ -84,7 +90,7 @@ abstract class AbstractGateway extends \WC_Payment_Gateway
         $this->title       = $this->get_option('title');
         $this->description = $this->get_option('description');
 
-        if ($this->licenseFeatureEnabled('refund')) {
+        if ($this->licenseFeatureEnabled('refund') || $this->isLocalSandbox()) {
             $this->supports[] = 'refunds';
         }
 
@@ -126,6 +132,24 @@ abstract class AbstractGateway extends \WC_Payment_Gateway
     protected function iconFilename(): ?string
     {
         return null;
+    }
+
+    /**
+     * Does this gateway have a Local sandbox on codeon.ge? Override to
+     * return true once the bank's API double exists there.
+     */
+    protected function supportsLocalSandbox(): bool
+    {
+        return false;
+    }
+
+    /**
+     * Label of the bank's own sandbox (stored value `sandbox`), e.g.
+     * "BOG Sandbox". Shown next to "Local sandbox", so it names the bank.
+     */
+    protected function bankSandboxLabel(): string
+    {
+        return __('Sandbox (test)', 'codeon-framework');
     }
 
     // ─── Dependency resolution ──────────────────────────────────────
@@ -196,13 +220,15 @@ abstract class AbstractGateway extends \WC_Payment_Gateway
             'environment' => [
                 'title'       => __('Environment', 'codeon-framework'),
                 'type'        => 'select',
-                'description' => __('Use sandbox while integrating; switch to production when go-live is approved.', 'codeon-framework'),
-                'options'     => [
-                    self::ENV_SANDBOX    => __('Sandbox (test)', 'codeon-framework'),
-                    self::ENV_PRODUCTION => __('Production', 'codeon-framework'),
-                ],
-                'default'  => self::ENV_SANDBOX,
-                'desc_tip' => true,
+                'description' => $this->supportsLocalSandbox()
+                    ? __('Local sandbox: the payment pages come from codeon.ge and no money moves; no bank account or licence needed. Bank sandbox and Production need your bank details and an active licence.', 'codeon-framework')
+                    : __('Use sandbox while integrating; switch to production when go-live is approved.', 'codeon-framework'),
+                'options'     => $this->environmentOptions(),
+                // New installs of a gateway with a Local sandbox start there
+                // (a demo works out of the box); saved choices are kept.
+                'default'  => $this->supportsLocalSandbox() ? self::ENV_LOCAL_SANDBOX : self::ENV_SANDBOX,
+                // Shown under the field when Local sandbox is offered; a tooltip as before otherwise.
+                'desc_tip' => !$this->supportsLocalSandbox(),
             ],
             'debug' => [
                 'title'   => __('Debug logging', 'codeon-framework'),
@@ -215,6 +241,18 @@ abstract class AbstractGateway extends \WC_Payment_Gateway
         $this->form_fields = array_merge($shared, $this->extraFormFields());
     }
 
+    /** @return array<string,string> */
+    protected function environmentOptions(): array
+    {
+        $options = [];
+        if ($this->supportsLocalSandbox()) {
+            $options[self::ENV_LOCAL_SANDBOX] = __('Local sandbox', 'codeon-framework');
+        }
+        $options[self::ENV_SANDBOX]    = $this->bankSandboxLabel();
+        $options[self::ENV_PRODUCTION] = __('Production', 'codeon-framework');
+        return $options;
+    }
+
     // ─── Availability ───────────────────────────────────────────────
 
     public function is_available(): bool
@@ -222,20 +260,43 @@ abstract class AbstractGateway extends \WC_Payment_Gateway
         if (!parent::is_available()) {
             return false;
         }
+        // Local sandbox moves no money: no licence needed, and every visitor
+        // can use it (a site built for a client is shown to them as a guest).
+        if ($this->isLocalSandbox()) {
+            return true;
+        }
+        // The bank's sandbox and production: an active licence, always.
         return $this->licenseModuleActive();
     }
 
     // ─── Helpers for subclasses ─────────────────────────────────────
 
+    /**
+     * The saved environment. Local sandbox only when this gateway
+     * supports it; anything unknown is the bank's sandbox — never
+     * production, never Local sandbox by accident.
+     */
     protected function environment(): string
     {
-        $value = $this->get_option('environment', self::ENV_SANDBOX);
-        return self::ENV_PRODUCTION === $value ? self::ENV_PRODUCTION : self::ENV_SANDBOX;
+        $value = $this->get_option('environment', $this->supportsLocalSandbox() ? self::ENV_LOCAL_SANDBOX : self::ENV_SANDBOX);
+        if (self::ENV_PRODUCTION === $value) {
+            return self::ENV_PRODUCTION;
+        }
+        if (self::ENV_LOCAL_SANDBOX === $value && $this->supportsLocalSandbox()) {
+            return self::ENV_LOCAL_SANDBOX;
+        }
+        return self::ENV_SANDBOX;
     }
 
+    /** The bank's own sandbox (not Local sandbox). */
     protected function isSandbox(): bool
     {
         return self::ENV_SANDBOX === $this->environment();
+    }
+
+    public function isLocalSandbox(): bool
+    {
+        return self::ENV_LOCAL_SANDBOX === $this->environment();
     }
 
     protected function debugEnabled(): bool

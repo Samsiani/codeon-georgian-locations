@@ -6,6 +6,99 @@ All notable changes to the CodeOn Plugin Framework. Format: [Keep a Changelog](h
 
 ## [Unreleased]
 
+## [0.3.27] — 2026-11-24
+
+### Added — free plugins in the Extensions catalog
+
+- **`Extensions\CatalogClient`** asks codeon.ge for free plugins (`include_free=1`) and caches the catalog under a new key, `codeon_framework_catalog_v2`, so older framework copies on the same site never read free entries.
+- **`Extensions\CatalogPlugin::$free`**: read from the catalog's `free` field; kept through the transient round trip.
+- **`Extensions\ExtensionsTab`**: free plugins that aren't installed get their own *Free plugins* section, a green *Free* pill and an *Install free* button (no key, no price list) with a *Details →* link. Installed ones stay under *Active* / *Installed but inactive*. Toolbar text mentions both ways to install.
+- **`Extensions\InstallController::handleFree()`** (`wp_ajax_codeon_install_free`): capability + nonce, then takes only the plugin id, accepts it only if the catalog marks it free, downloads from `https://codeon.ge/api/download/<id>`, installs and activates. A plugin already on disk is just activated.
+- **`Plugin\Manifest::hubCatalog(bool)`** (default `true`): from the CodeOn Shipping Rules packaging (0.3.26.1). Off = the plugin joins the hub without the shared Extensions page and install handlers. Shipping Rules 1.0.1–1.0.2 call it, so every framework from now on must keep it.
+- Tests: `tests/Extensions/CatalogTest.php`.
+
+## [0.3.26] — 2026-11-20
+
+### Fixed — WordPress 6.7+ early translation loading (`_load_textdomain_just_in_time`)
+
+- **`License\TamperHeartbeat::register()`** now defers `wp_schedule_event()` to `init` (matching `LicenseSchedule::register()`). Calling `wp_schedule_event()` during `plugins_loaded` / `woocommerce_loaded` invokes `wp_get_schedules()`, which fires `cron_schedules` callbacks that call `__()` before `init`.
+- **`WooCommerce\Payments\LocalSandbox::adminNotice()`** now accepts `string|callable $message` so callers can defer `__()` until `admin_notices` renders (backwards-compatible with plain `string`).
+- **Docs (`docs/SCAFFOLDING.md`, `docs/I18N_AND_WPML.md`):** boot template and release checklist now defer `Manifest` + `Bootstrap::register()` onto `init` after `load_plugin_textdomain()`.
+- Tests: `tests/License/TamperHeartbeatTest.php`, `tests/WooCommerce/Payments/LocalSandboxTest.php`.
+
+## [0.3.25] — 2026-11-13
+
+### Fixed — `BogPayments\Client::completePreauth()`: BOG's documented pre-authorization endpoints
+
+- **Confirm** now calls `POST /payments/v1/payment/authorization/approve/{order_id}` — body `{}` for the whole held amount, `{"amount":"…"}` for a partial confirmation. **Release** calls `POST /payments/v1/payment/authorization/cancel/{order_id}`. Before, it called `POST` / `DELETE /payments/v1/payment/{order_id}`, which BOG does not document (api.bog.ge/docs/payments, "Complete Pre-Authorization").
+- BOG answers `request_received`; the result (completed / partial_completed / rejected) comes on the callback.
+- Tests: `tests/WooCommerce/Payments/BogPaymentsClientTest.php`.
+
+## [0.3.24] — 2026-11-09
+
+### Added — `WooCommerce\Payments\ProductCalculator`: monthly payment on the product page
+
+- **One widget per bank** (no cross-bank aggregation): each installment plugin calls `ProductCalculator::register($gatewayId, $kind, $shortcode, $priority, $offer)`. It hooks `woocommerce_single_product_summary` (under the price), adds the plugin's shortcode (`[tag]`, `[tag id="123"]` — published products only) and enqueues the assets on product pages where the widget is on. `$offer` says whether the gateway can be offered and returns the bank's side: name, label, logo, colour, price range, and rate/terms (loan) or number of parts (split).
+- **Two kinds, three layouts each:** `loan` (amortised, `InstallmentEstimator::monthlyPayment()`) — `line`, `card` (term buttons), `calculator` (slider); `split` (interest-free pay-in-N) — `line`, `card` (the payments side by side), `schedule` (payment dates, `wp_date()`; re-made in the browser only when the page was cached on another day).
+- **Settings in the gateway's own form:** `ProductCalculator::formFields($kind, $bankColour, $shortcode, $textdomain, $ownLimits)` — on/off (default off), layout, position (under the price / shortcode only), colour (empty = the bank's); with `$ownLimits` also number of payments and "show from / up to" prices for gateways without limits of their own. `settings()` / `isEnabled()` read the saved option without building gateways — plugins use `isEnabled()` to hide their old badge while the widget is on.
+- **Prices:** `wc_get_price_to_display()` (simple) or the lowest/highest variation display price; the script re-prices on `found_variation` / `reset_data` and hides the widget while the price is outside the bank's range. A loan `multiplier` raises the principal (Credo's handling fee). Grouped/external products and non-GEL shops get nothing.
+- **Look:** inherits the theme's font and text colour (muted text via opacity, so it follows themes that switch to dark mode); bank colour only for the selected term, slider and markers. Buttons/slider fully reset against theme styles. Narrow widgets show the split payments 2 × 2 (container query, with a 400 px media-query fallback).
+- Text goes through the calling plugin's textdomain (plugins mirror the strings in `includes/I18n/ProductWidgetStrings.php` for make-pot).
+- Tests: `tests/WooCommerce/Payments/ProductCalculatorTest.php` (dates, terms, ranges, colours, settings, every layout's markup, escaping).
+
+## [0.3.23] — 2026-10-30
+
+### Added — `License\LicenseSchedule`: licence checks at most 3 times a day
+
+- **One shared WP-Cron event per site** (`codeon/licenses/check`, every 8 hours, interval `codeon_every_8_hours`). Each CodeOn plugin hangs its check on it with `LicenseSchedule::register($check, $lastCheckedAt, $legacyHook)`, so every licence on the site is checked in one background run. Sites are spread over the 8 hours when the event is first scheduled.
+- **A plugin checks only when its last check — successful or failed — is 7½ hours old or more**, so codeon.ge is asked at most three times a day per plugin, also while it's unreachable.
+- **Nothing runs on page loads.** Replaces each plugin's `admin_init` queue, which (because the plugins released its 15-minute lock as soon as the check started) re-checked about every two minutes while wp-admin was open. Safety net: when a plugin's last check is more than two days old (WP-Cron not running), an administrator's visit queues the shared check once — through Action Scheduler where it exists.
+- **`retire($legacyHook)`** removes a plugin's old daily event and queued async checks, once per site (option `codeon_license_retired_hooks`).
+- "Check now" and saving a key still check right away — they don't go through the schedule.
+- First tests for the framework: `composer test` (plain PHPUnit, WordPress stood in for in `tests/bootstrap.php`).
+
+### Changed
+
+- **`UpdateChecker::CACHE_TTL` 3 h → 12 h** — update manifests are fetched twice a day per plugin, like WordPress's own update check. "Check again" on Dashboard → Updates still asks at once.
+
+## [0.3.22] — 2026-10-14
+
+### Changed
+
+- **Local sandbox is open to every visitor.** The "Show Local sandbox at checkout only to shop managers" setting (0.3.21) is removed: when a gateway's Environment is Local sandbox, anyone can see and use it, so a site built for a client can be shown to them as a guest. With the old setting ticked and no other payment method, guests saw none and WooCommerce answered "Invalid payment method". A saved value of the old setting is ignored. Real environments are unchanged: the bank's sandbox and Production still need an active licence.
+
+## [0.3.21] — 2026-10-14
+
+### Added — Local sandbox
+
+- **`AbstractGateway::ENV_LOCAL_SANDBOX` (`local_sandbox`)**: a third Environment choice, offered only by gateways whose new `supportsLocalSandbox()` returns true. codeon.ge stands in for the bank's API and pages (docs/LOCAL_SANDBOX.md on codeon.ge): no merchant account, no money, **no licence**. The bank's own sandbox (stored value `sandbox`, unchanged) is labelled by the gateway's new `bankSandboxLabel()` ("BOG Sandbox"); Production unchanged. New installs of a supporting gateway default to Local sandbox; saved choices are kept. `environment()` still turns anything unknown into `sandbox`, never production or Local sandbox.
+- **`is_available()`**: in Local sandbox no licence check, but only users who can `manage_woocommerce` see the method while the new `local_sandbox_managers_only` setting is on (default). The bank's sandbox and Production keep the licence check exactly as before. Refunds are advertised in Local sandbox.
+- **`Payments\LocalSandbox`**: codeon.ge base URL (`CODEON_LOCAL_SANDBOX_BASE` wp-config constant for development), the fixed client secret, the sandbox callback public key (hard-coded), `shopHost()`, `markOrder()`, `isSandboxOrder()`, `adminNotice()`.
+- **`BogPayments\Client`**: `local_sandbox` sends every call (token, orders, receipt, refund, capture) to codeon.ge with the shop host as client id; `sandbox`/`production` still only call BoG. New `callbackPublicKey()` returns the sandbox key in Local sandbox and BoG's key otherwise — plugins verify callbacks with it instead of `CALLBACK_PUBLIC_KEY_PEM`.
+
+### Removed
+
+- `KnownPlugins` label for the legacy `codeon-payments` mega-plugin — the plugin and its repo were deleted on 2026-09-28. (Unknown slugs still fall back to Title Case.)
+
+## [0.3.20] — 2026-09-28
+
+### Fixed — paid orders downgraded by late or stale payment events
+
+- **`OrderStatusMapper::apply()` no longer fails or cancels a paid order.** FAILURE/CANCEL are refused (with an order note) when the database shows a paid status, a paid date is set, or another payment method owns the order by now. Checked against the DB, not the object — callers often hold an order loaded before a slow bank call. SUCCESS no longer replays `payment_complete()` on an order the DB already shows as paid (duplicate new-order emails from webhook/reconcile races).
+- **`WebhookEvents::record()`** re-offers events recorded but never marked processed for 5 minutes (lock miss, fatal), instead of treating them as duplicates forever — a paid order could stay unpaid. It also creates the table on demand when it's missing (plugin updated without re-activation), which previously made every event look like a duplicate.
+
+### Added
+
+- **`PaidOrderGuard::protect(array $gatewayIds, string $logSource)`** — vetoes any automated change of an order paid through the listed gateways to failed/cancelled, from any plugin, before it is saved: the downgrade (and any payment-identity change bundled with it) is taken out of the pending save and WooCommerce's status transition is cancelled, so no email, restock or sync happens; the rest of the save goes through and the caller carries on. One order note per target status per hour names the plugin that tried. Manual admin edits, bulk edits, the rest of a request in which a shop manager changed a status manually, and REST/WP-CLI requests by a user who can edit orders pass. Opt out per site with `add_filter('codeon_payments_paid_order_guard', '__return_false')`. Real case: intelekti.ge #22366.
+- **`OrderLock::run($scope, $orderId, $fn)`** — per-order mutex on MySQL `GET_LOCK` (no TTL, released if the request dies), falling back to `wp_cache_add` only where named locks are unavailable. Replaces the non-exclusive `add_option()` pattern the plugins copied from the hardening doc.
+- **`OrderStatusMapper::apply(..., ?string $gatewayId = null)`** — optional gateway id: "another payment method owns the order" is then judged against it (reliable for freshly loaded orders), and a success for an order already paid through a different method leaves a loud possible-double-charge note instead of a routine one.
+- **`PaidOrders::fresh($orderId)`** — reload an order bypassing WooCommerce's in-request caches (post cache, OrderCache, HPOS datastore cache).
+- **`PaidOrders`** — persisted status / payment method lookup (HPOS and posts storage).
+
+### Documented
+
+- `docs/PAYMENT_GATEWAY_HARDENING.md` §2.2 rewritten: lock → re-read order → record → apply → mark processed.
+
 ## [0.3.16] — 2026-05-04
 
 ### Documented — `docs/I18N_AND_WPML.md` (mandatory for every CodeOn plugin)

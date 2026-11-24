@@ -51,6 +51,9 @@ final class HubRegistry
     /** @var bool Has the admin_menu hook already been wired up? */
     private static bool $hookInstalled = false;
 
+    /** @var bool Have the Extensions install services been registered? */
+    private static bool $servicesInstalled = false;
+
     /** @var array<string, true> Hub-group → registered flag. */
     private static array $topLevelRegistered = [];
 
@@ -90,6 +93,10 @@ final class HubRegistry
             // — i.e. inside `plugins_loaded` / `init` (default 10).
             add_action('admin_menu', [self::class, 'drainAndRender'], 8);
             self::$hookInstalled = true;
+        }
+
+        if ($manifest->hubCatalog && !self::$servicesInstalled) {
+            self::$servicesInstalled = true;
             self::ensureSharedServices();
         }
     }
@@ -184,6 +191,7 @@ final class HubRegistry
     {
         self::$registered          = [];
         self::$hookInstalled       = false;
+        self::$servicesInstalled   = false;
         self::$topLevelRegistered  = [];
     }
 
@@ -260,7 +268,8 @@ final class HubRegistry
         // even when CodeOn Core isn't present. Core (when installed)
         // suppresses this via the filter and provides its own
         // richer Extensions UX.
-        if ((bool) apply_filters(self::FILTER_DEFAULT_EXTENSIONS, true, $group)) {
+        $catalogEnabled = array_filter($rows, static fn (array $row): bool => $row['manifest']->hubCatalog);
+        if ($catalogEnabled !== [] && (bool) apply_filters(self::FILTER_DEFAULT_EXTENSIONS, true, $group)) {
             self::registerDefaultExtensionsSubmenu();
         }
 

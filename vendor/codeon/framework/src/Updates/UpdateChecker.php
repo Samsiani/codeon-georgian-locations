@@ -30,7 +30,19 @@ use Closure;
 final class UpdateChecker
 {
     public const MANIFEST_URL_BASE = 'https://codeon.ge/api/v1/updates/';
-    public const CACHE_TTL = 3 * HOUR_IN_SECONDS;
+    // Twice a day, like WordPress's own update check. "Check again" on
+    // Dashboard → Updates (force-check) still asks right away.
+    public const CACHE_TTL = 12 * HOUR_IN_SECONDS;
+    /**
+     * Negative-cache TTL — how long to remember "the last fetch failed"
+     * before retrying. Short enough that a real codeon.ge recovery is
+     * visible to merchants within a quarter-hour; long enough that a
+     * sustained outage doesn't burn a request per admin click. Manual
+     * `?force-check=1` always clears it (see maybeForceRefresh /
+     * invalidateCache). 2026-05-21 — added to stop the 10 s × 10-plugin
+     * stack on every admin page-load whenever codeon.ge briefly hiccups.
+     */
+    public const FAILURE_TTL = 15 * MINUTE_IN_SECONDS;
 
     /** @var array{icons:array<string,string>, banners:array<string,string>}|null */
     private ?array $assetPack;
@@ -175,6 +187,13 @@ final class UpdateChecker
     private function manifest(): ?array
     {
         $cached = get_site_transient($this->cacheKey());
+        // Explicit negative-cache check — sentinel rows MUST short-circuit
+        // before any "is the cached payload usable" path downstream. Without
+        // this, code that does `if (!empty($cached)) use it` would treat the
+        // sentinel as real manifest data and break update detection.
+        if (is_array($cached) && !empty($cached['__failure'])) {
+            return null;
+        }
         if (is_array($cached)) {
             return $cached;
         }
@@ -193,18 +212,33 @@ final class UpdateChecker
             $queryArgs['build_id'] = $buildId;
         }
 
+        // 5 s timeout (was 10 s) — codeon.ge's manifest endpoint replies
+        // in <500 ms on healthy paths; 5 s is generous and stops a flaky
+        // network from costing 10 s per admin page-load × N CodeOn
+        // plugins. Failure-path negative cache below ensures that even
+        // when this DOES time out, we don't retry until FAILURE_TTL.
         $response = wp_remote_get(
             add_query_arg($queryArgs, $this->manifestUrl()),
-            ['timeout' => 10]
+            ['timeout' => 5]
         );
+        $writeFailureSentinel = function (): void {
+            set_site_transient(
+                $this->cacheKey(),
+                ['__failure' => true, 'at' => time()],
+                self::FAILURE_TTL
+            );
+        };
         if (is_wp_error($response)) {
+            $writeFailureSentinel();
             return null;
         }
         if ((int) wp_remote_retrieve_response_code($response) !== 200) {
+            $writeFailureSentinel();
             return null;
         }
         $data = json_decode((string) wp_remote_retrieve_body($response), true);
         if (!is_array($data)) {
+            $writeFailureSentinel();
             return null;
         }
         set_site_transient($this->cacheKey(), $data, self::CACHE_TTL);

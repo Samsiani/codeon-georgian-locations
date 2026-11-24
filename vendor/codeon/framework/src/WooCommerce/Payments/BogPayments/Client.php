@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CodeOn\Framework\WooCommerce\Payments\BogPayments;
 
 use CodeOn\Framework\Logging\Logger;
+use CodeOn\Framework\WooCommerce\Payments\LocalSandbox;
 use CodeOn\Framework\WooCommerce\Payments\Money;
 
 /**
@@ -38,12 +39,19 @@ use CodeOn\Framework\WooCommerce\Payments\Money;
  *  - WooCommerce concerns (order objects, meta, hooks).
  *  - Webhook signature verification — plugins call
  *    `RsaCallbackSignature::verify(rawBody, header)` themselves with
- *    {@see Client::CALLBACK_PUBLIC_KEY_PEM}.
+ *    {@see Client::callbackPublicKey()} (BoG's key, or codeon.ge's sandbox
+ *    key in Local sandbox).
+ *
+ * Local sandbox ({@see LocalSandbox}): same calls, sent to codeon.ge's
+ * stand-in for BoG with the shop's host as the client id; no merchant
+ * account, no money.
  */
 final class Client
 {
-    public const ENV_SANDBOX    = 'sandbox';
-    public const ENV_PRODUCTION = 'production';
+    public const ENV_SANDBOX       = 'sandbox';
+    public const ENV_PRODUCTION    = 'production';
+    /** codeon.ge's stand-in for BoG ({@see LocalSandbox}): no merchant account, no money. */
+    public const ENV_LOCAL_SANDBOX = 'local_sandbox';
 
     private const OAUTH_BASE    = 'https://oauth2.bog.ge';
     private const OAUTH_PATH    = '/auth/realms/bog/protocol/openid-connect/token';
@@ -83,8 +91,8 @@ PEM;
     /**
      * @param string $clientId       BOG OAuth client id (per merchant).
      * @param string $clientSecret   BOG OAuth client secret.
-     * @param string $environment    `sandbox` / `production` — internal label
-     *                               only; BOG publishes one host pair.
+     * @param string $environment    `sandbox` / `production` (BoG's one host
+     *                               pair) or `local_sandbox` (codeon.ge).
      * @param string $pluginSlug     Consumer plugin slug
      *                               (`codeon-bog-card-payment`, etc.).
      *                               Scopes the token cache key, lock group,
@@ -106,16 +114,57 @@ PEM;
     ) {
     }
 
+    /** Anything unknown is BoG's sandbox — never production, never Local sandbox. */
     public function environment(): string
     {
-        return in_array($this->environment, [self::ENV_SANDBOX, self::ENV_PRODUCTION], true)
+        return in_array($this->environment, [self::ENV_SANDBOX, self::ENV_PRODUCTION, self::ENV_LOCAL_SANDBOX], true)
             ? $this->environment
             : self::ENV_SANDBOX;
     }
 
+    public function isLocalSandbox(): bool
+    {
+        return $this->environment() === self::ENV_LOCAL_SANDBOX;
+    }
+
+    /** Local sandbox needs no merchant credentials; BoG needs both. */
     public function isConfigured(): bool
     {
-        return $this->clientId !== '' && $this->clientSecret !== '';
+        return $this->isLocalSandbox() || ($this->clientId !== '' && $this->clientSecret !== '');
+    }
+
+    /**
+     * The key callbacks must be signed with in this environment: codeon.ge's
+     * sandbox key in Local sandbox, BoG's published key otherwise. Never both.
+     */
+    public function callbackPublicKey(): string
+    {
+        return $this->isLocalSandbox() ? LocalSandbox::CALLBACK_PUBLIC_KEY_PEM : self::CALLBACK_PUBLIC_KEY_PEM;
+    }
+
+    /** OAuth host: BoG, or codeon.ge in Local sandbox. */
+    private function oauthBase(): string
+    {
+        return $this->isLocalSandbox() ? LocalSandbox::baseUrl('bog') : self::OAUTH_BASE;
+    }
+
+    /** Payments API host: BoG, or codeon.ge in Local sandbox. */
+    private function paymentsBase(): string
+    {
+        return $this->isLocalSandbox() ? LocalSandbox::baseUrl('bog') : self::PAYMENTS_BASE;
+    }
+
+    /**
+     * OAuth client credentials. Local sandbox: the shop's host and the
+     * fixed public secret (see the codeon.ge contract); BoG: the merchant's.
+     *
+     * @return array{0:string,1:string}
+     */
+    private function credentials(): array
+    {
+        return $this->isLocalSandbox()
+            ? [LocalSandbox::shopHost(), LocalSandbox::CLIENT_SECRET]
+            : [$this->clientId, $this->clientSecret];
     }
 
     // ─── Payments API ────────────────────────────────────────────────
@@ -131,7 +180,7 @@ PEM;
      */
     public function createOrder(array $args): array
     {
-        return $this->request('POST', self::PAYMENTS_BASE, '/payments/v1/ecommerce/orders', $args);
+        return $this->request('POST', $this->paymentsBase(), '/payments/v1/ecommerce/orders', $args);
     }
 
     /** @return array<string,mixed> */
@@ -139,7 +188,7 @@ PEM;
     {
         return $this->request(
             'GET',
-            self::PAYMENTS_BASE,
+            $this->paymentsBase(),
             '/payments/v1/receipt/' . rawurlencode($orderId),
             null,
         );
@@ -163,7 +212,7 @@ PEM;
         }
         return $this->request(
             'POST',
-            self::PAYMENTS_BASE,
+            $this->paymentsBase(),
             '/payments/v1/payment/refund/' . rawurlencode($orderId),
             $body,
         );
@@ -190,7 +239,7 @@ PEM;
     {
         return $this->request(
             'PUT',
-            self::PAYMENTS_BASE,
+            $this->paymentsBase(),
             '/payments/v1/orders/' . rawurlencode($orderId) . '/cards',
             null,
             $idempotencyKey === null ? [] : ['Idempotency-Key' => $idempotencyKey],
@@ -198,10 +247,19 @@ PEM;
     }
 
     /**
-     * Complete or cancel a pre-authorised payment.
+     * Confirm or release a pre-authorised payment (an order created with
+     * `capture: manual`).
      *
-     *   - POST   /payments/v1/payment/{order_id}  → capture (full or partial via amount)
-     *   - DELETE /payments/v1/payment/{order_id}  → void / cancel pre-auth
+     *   - POST /payments/v1/payment/authorization/approve/{order_id}
+     *     → confirm; `amount` only for a partial confirmation, without it
+     *       BOG confirms the whole held amount
+     *   - POST /payments/v1/payment/authorization/cancel/{order_id}
+     *     → release the hold
+     *
+     * BOG answers `request_received`; the outcome (completed /
+     * partial_completed / rejected) arrives on the callback. Before 0.3.25
+     * this called POST / DELETE /payments/v1/payment/{order_id}, which BOG
+     * does not document.
      *
      * @param string     $authType  FULL_COMPLETE | PARTIAL_COMPLETE | CANCEL
      * @param null|float $amount    Required when $authType === PARTIAL_COMPLETE
@@ -209,18 +267,26 @@ PEM;
      */
     public function completePreauth(string $orderId, string $authType, ?float $amount = null, string $currency = 'GEL'): array
     {
-        $path = '/payments/v1/payment/' . rawurlencode($orderId);
-
         if ($authType === 'CANCEL') {
-            return $this->request('DELETE', self::PAYMENTS_BASE, $path, null);
+            return $this->request(
+                'POST',
+                $this->paymentsBase(),
+                '/payments/v1/payment/authorization/cancel/' . rawurlencode($orderId),
+                new \stdClass(),
+            );
         }
 
-        $body = null;
+        $body = new \stdClass();
         if ($authType === 'PARTIAL_COMPLETE' && $amount !== null) {
-            $body = ['amount' => self::formatAmountForApi($amount, $currency)];
+            $body->amount = self::formatAmountForApi($amount, $currency);
         }
 
-        return $this->request('POST', self::PAYMENTS_BASE, $path, $body);
+        return $this->request(
+            'POST',
+            $this->paymentsBase(),
+            '/payments/v1/payment/authorization/approve/' . rawurlencode($orderId),
+            $body,
+        );
     }
 
     /**
@@ -267,9 +333,10 @@ PEM;
         }
 
         try {
-            $credentials = base64_encode($this->clientId . ':' . $this->clientSecret);
+            [$id, $secret] = $this->credentials();
+            $credentials = base64_encode($id . ':' . $secret);
 
-            $response = wp_remote_post(self::OAUTH_BASE . self::OAUTH_PATH, [
+            $response = wp_remote_post($this->oauthBase() . self::OAUTH_PATH, [
                 'timeout'   => self::TIMEOUT,
                 'sslverify' => true,
                 'headers'   => [
@@ -325,7 +392,7 @@ PEM;
     private function tokenCacheKey(): string
     {
         return 'codeon_bog_token_' . md5(
-            $this->pluginSlug . '|' . $this->clientId . '|' . $this->environment()
+            $this->pluginSlug . '|' . $this->credentials()[0] . '|' . $this->environment()
         );
     }
 

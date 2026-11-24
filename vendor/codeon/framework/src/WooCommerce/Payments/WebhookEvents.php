@@ -63,9 +63,24 @@ final class WebhookEvents
     }
 
     /**
-     * Try to record a webhook event. Returns true when the row was
-     * freshly inserted (caller should process side effects) and
-     * false when a duplicate already existed (drop the request).
+     * A row recorded but never marked processed for this long is treated
+     * as abandoned (lock miss, PHP fatal, exception in a WC hook) and may
+     * be claimed again by the next webhook / reconcile pass.
+     */
+    public const RECLAIM_AFTER_SECONDS = 300;
+
+    /**
+     * Try to record a webhook event. Returns true when the caller should
+     * process side effects: the row was freshly inserted, or an earlier
+     * attempt recorded it but never finished (see RECLAIM_AFTER_SECONDS).
+     * Returns false for a genuine duplicate (drop the request).
+     *
+     * Before 0.3.20 an unfinished row blocked the event forever — every
+     * later callback and reconcile saw "duplicate" — so a payment whose
+     * first apply lost the per-order lock could leave the order unpaid.
+     * A missing table (plugin updated, activation hook never re-ran) also
+     * made every event look like a duplicate; the schema is now created
+     * on demand.
      */
     public static function record(
         string $gateway,
@@ -75,28 +90,68 @@ final class WebhookEvents
         string $payloadHash
     ): bool {
         global $wpdb;
-        $table = self::tableName();
 
+        if (get_option(self::DB_VERSION_OPTION) !== self::DB_VERSION) {
+            self::installSchema();
+        }
+
+        $table = self::tableName();
+        $now = current_time('mysql', true);
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name only
-        $result = $wpdb->query(
+        $insert = $wpdb->prepare(
+            "INSERT IGNORE INTO {$table} (gateway, event_id, order_id, status, payload_hash, received_at) VALUES (%s, %s, %d, %s, %s, %s)",
+            $gateway,
+            $eventId,
+            $orderId ?? 0,
+            $status,
+            $payloadHash,
+            $now
+        );
+
+        $result = $wpdb->query($insert);
+        if ($result === false && stripos((string) $wpdb->last_error, "doesn't exist") !== false) {
+            // Table dropped or never created despite the version flag.
+            self::installSchema();
+            $result = $wpdb->query($insert);
+        }
+        if ($result === false && function_exists('wc_get_logger')) {
+            // Deadlock / lost connection: the caller treats this as "not
+            // new" and the next webhook or reconcile pass tries again.
+            wc_get_logger()->error('codeon_payment_events insert failed', [
+                'source'   => 'codeon-payments',
+                'gateway'  => $gateway,
+                'event_id' => $eventId,
+                'error'    => (string) $wpdb->last_error,
+            ]);
+        }
+        if (1 === (int) $result) {
+            return true;
+        }
+
+        // Claim an abandoned row. The UPDATE is atomic, so only one
+        // concurrent caller gets affected-rows = 1.
+        $cutoff = gmdate('Y-m-d H:i:s', time() - self::RECLAIM_AFTER_SECONDS);
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name only
+        $claimed = $wpdb->query(
             $wpdb->prepare(
-                "INSERT IGNORE INTO {$table} (gateway, event_id, order_id, status, payload_hash, received_at) VALUES (%s, %s, %d, %s, %s, %s)",
+                "UPDATE {$table} SET received_at = %s, payload_hash = %s WHERE gateway = %s AND event_id = %s AND processed_at IS NULL AND received_at < %s",
+                $now,
+                $payloadHash,
                 $gateway,
                 $eventId,
-                $orderId ?? 0,
-                $status,
-                $payloadHash,
-                current_time('mysql', true)
+                $cutoff
             )
         );
-        return 1 === (int) $result;
+        return 1 === (int) $claimed;
     }
 
     /**
      * Mark an event as fully processed. Useful for observability
      * (rows where `processed_at IS NULL` represent crashes between
-     * record() and side-effect application; the reconcile cron
-     * sweeps them).
+     * record() and side-effect application; record() lets the next
+     * webhook / reconcile pass claim them after RECLAIM_AFTER_SECONDS).
+     * Call it for every event you deliberately consume, including ones
+     * you decide to ignore, or they will be offered again.
      */
     public static function markProcessed(string $gateway, string $eventId): void
     {

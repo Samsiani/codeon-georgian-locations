@@ -54,6 +54,21 @@ final class TamperHeartbeat
     {
         $hook = $this->cronHook();
         add_action($hook, [$this, 'tick']);
+
+        // Defer wp_schedule_event() until `init` (matching LicenseSchedule):
+        // calling it on `plugins_loaded` / `woocommerce_loaded` invokes
+        // `wp_get_schedules()`, which fires `cron_schedules` callbacks that
+        // call __() and trigger WordPress 6.7's early-translation notice.
+        if (function_exists('did_action') && did_action('init') > 0) {
+            $this->schedule();
+            return;
+        }
+        add_action('init', [$this, 'schedule']);
+    }
+
+    public function schedule(): void
+    {
+        $hook = $this->cronHook();
         if (!wp_next_scheduled($hook)) {
             // Once daily is plenty: we don't need bursts of telemetry
             // from a single broken install, and the cron's natural

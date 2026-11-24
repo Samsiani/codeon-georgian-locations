@@ -3,7 +3,7 @@
  * Plugin Name:       CodeOn Georgian Locations
  * Plugin URI:        https://wordpress.org/plugins/codeon-core/
  * Description:       Georgian addresses at WooCommerce checkout — a Region → Municipality → Settlement picker with all 4,394 settlements of Georgia, in place of the free-text City field. Free. Also adds the CodeOn menu that the CodeOn plugins share.
- * Version:           0.4.0
+ * Version:           0.4.1
  * Requires at least: 6.2
  * Requires PHP:      8.1
  * Requires Plugins:  woocommerce
@@ -31,7 +31,7 @@ if (defined('CODEON_CORE_VERSION')) {
     return;
 }
 
-define('CODEON_CORE_VERSION', '0.4.0');
+define('CODEON_CORE_VERSION', '0.4.1');
 define('CODEON_CORE_FILE', __FILE__);
 define('CODEON_CORE_PATH', plugin_dir_path(__FILE__));
 define('CODEON_CORE_URL', plugin_dir_url(__FILE__));

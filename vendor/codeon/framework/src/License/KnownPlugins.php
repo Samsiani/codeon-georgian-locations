@@ -39,7 +39,6 @@ final class KnownPlugins
     {
         $defaults = [
             'fina-sync'             => __('Fina ↔ WooCommerce Synchronization', 'codeon-framework'),
-            'codeon-payments'       => __('Codeon Georgian Payments', 'codeon-framework'),
             'quickshipper-delivery' => __('QuickShipper Delivery', 'codeon-framework'),
         ];
         /**

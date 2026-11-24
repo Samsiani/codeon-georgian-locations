@@ -190,19 +190,33 @@ final class Plugin
     public static function instance(): self { return self::$instance ??= new self(); }
     public function boot(): void
     {
-        $manifest = (new Manifest('your-plugin-slug', __('Your Plugin', 'your-plugin-slug')))
-            ->version(YOUR_PLUGIN_VERSION)
-            ->dashicon('dashicons-admin-generic')
-            ->capability('manage_options');
+        $isRecovery = !(new FrameworkBuildStamp())->verify();
 
-        $repo = new FlatOptionRepository('your_plugin_settings');
-        $licenseAdapter = new FrameworkLicenseAdapter();
+        // Load translations and wire the framework chrome on `init` (not
+        // `woocommerce_loaded` / `plugins_loaded`): Manifest takes
+        // translated strings, and calling __() before `init` triggers
+        // WordPress 6.7's `_load_textdomain_just_in_time` notice.
+        add_action('init', static function (): void {
+            load_plugin_textdomain(
+                'your-plugin-slug',
+                false,
+                dirname(YOUR_PLUGIN_BASENAME) . '/languages'
+            );
 
-        Bootstrap::register(
-            $manifest,
-            [ new GeneralTab($repo), new LicenseTab($licenseAdapter) ],
-            new FrameworkBuildStamp()
-        );
+            $manifest = (new Manifest('your-plugin-slug', __('Your Plugin', 'your-plugin-slug')))
+                ->version(YOUR_PLUGIN_VERSION)
+                ->dashicon('dashicons-admin-generic')
+                ->capability('manage_options');
+
+            $repo = new FlatOptionRepository('your_plugin_settings');
+            $licenseAdapter = new FrameworkLicenseAdapter();
+
+            Bootstrap::register(
+                $manifest,
+                [ new GeneralTab($repo), new LicenseTab($licenseAdapter) ],
+                new FrameworkBuildStamp()
+            );
+        });
     }
 }
 ```

@@ -75,6 +75,27 @@ Concretely, that means:
 - A merchant whose key is deleted on codeon.ge sees `Active → Revoked` on the next cron tick (or as soon as they click *Refresh now* in the License tab). Gateways stop offering checkout immediately because `AbstractGateway::licenseModuleActive()` gates on `effectiveStatus() in ['active','grace']`.
 - A merchant on codeon.ge during a brief outage sees their plugin keep working — the snapshot's `expires` is still good, the heartbeat records the transient error, the next successful tick clears it.
 
+## When the heartbeat runs (v0.3.23+)
+
+Don't schedule `revalidate()` yourself and don't trigger it from `admin_init`. Hang it on the shared schedule:
+
+```php
+public function register(): void
+{
+    add_action(self::REVALIDATE_HOOK, [$this, 'revalidate']); // old queued checks still drain
+    LicenseSchedule::register(
+        [$this, 'revalidate'],
+        static fn (): int => (int) (self::store()->getCheck()['checked_at'] ?? 0),
+        self::REVALIDATE_HOOK // the old per-plugin hook, removed once
+    );
+}
+```
+
+- One WP-Cron event per site (`codeon/licenses/check`, every 8 hours) runs every CodeOn plugin's check in one background run.
+- A plugin checks only when its last check (`checked_at` — failed ones count) is 7½ hours old, so codeon.ge is asked at most three times a day per plugin.
+- Nothing runs on page loads; if the last check is more than two days old (WP-Cron off), an administrator's visit queues the shared check once.
+- *Refresh now* / saving a key call `revalidate()` directly, as before.
+
 ---
 
 ## The "Plan includes" list
